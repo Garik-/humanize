@@ -68,7 +68,9 @@ func (d *decoder) decode() error {
 	offset += 2 // uint16 NumTracks
 	offset += 2 // uint16 Division
 
-	d.r.Seek(offset, io.SeekStart)
+	if _, err := d.r.Seek(offset, io.SeekStart); err != nil {
+		return err
+	}
 
 	nextChunk, err := d.parseTrack()
 	if err != nil {
@@ -88,7 +90,8 @@ func (d *decoder) decode() error {
 		}
 	}
 
-	return nil
+	_, err = d.r.Seek(0, io.SeekStart)
+	return err
 }
 
 func (d *decoder) parseTrack() (nextChunkType, error) {
@@ -118,7 +121,7 @@ func (d *decoder) uint7() (uint8, error) {
 	if err != nil {
 		return 0, err
 	}
-	return (b & 0x7f), nil
+	return b & 0x7f, nil
 }
 
 // VarLen returns the variable length value at the exact parser location.
@@ -132,7 +135,7 @@ func (d *decoder) varLen() (val uint32, err error) {
 			return 0, err
 		}
 		buf = append(buf, b)
-		lastByte = (b>>7 == 0x0)
+		lastByte = b>>7 == 0x0
 	}
 
 	val, _ = decodeVarint(buf)
@@ -153,7 +156,6 @@ func (p *decoder) parseEvent() (nextChunkType, error) {
 		return eventChunk, err
 	}
 
-
 	e := new(event)
 	e.msgType = (statusByte & 0xF0) >> 4
 
@@ -162,7 +164,9 @@ func (p *decoder) parseEvent() (nextChunkType, error) {
 			e.msgType = p.lastEvent.msgType
 
 			offset -= 1
-			p.r.Seek(offset, io.SeekStart)
+			if _, err := p.r.Seek(offset, io.SeekStart); err != nil {
+				return eventChunk, err
+			}
 		}
 	}
 
@@ -179,52 +183,48 @@ func (p *decoder) parseEvent() (nextChunkType, error) {
 
 	case 0x2, 0x3, 0x4, 0x5, 0x6, 0xC, 0xD:
 		offset += 1
-		p.r.Seek(offset, io.SeekStart)
+		if _, err := p.r.Seek(offset, io.SeekStart); err != nil {
+			return eventChunk, err
+		}
 
 	case 0xB, 0xE:
 		offset += 2
-		p.r.Seek(offset, io.SeekStart)
+		if _, err := p.r.Seek(offset, io.SeekStart); err != nil {
+			return eventChunk, err
+		}
 
 	case 0x8:
 		if e.note, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
+		e.velocityByteOffset = offset
 		if e.velocity, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
-
-		e.velocityByteOffset = offset
-
 		p.events = append(p.events, e)
 
 	case 0x9:
 		if e.note, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
+		e.velocityByteOffset = offset
 		if e.velocity, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
-
-		e.velocityByteOffset = offset
-
 		p.events = append(p.events, e)
 
 	case 0xA:
 		if e.note, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
-		// aftertouch value
+		e.velocityByteOffset = offset
 		if e.velocity, err = p.uint7(); err != nil {
 			return eventChunk, err
 		}
-
-		e.velocityByteOffset = offset
-
 		p.events = append(p.events, e)
-
 	case 0xF:
 		var ok bool
-		nextChunk, ok, err = p.parseMetaMsg(e)
+		nextChunk, ok, err = p.parseMetaMsg()
 		// early exit without adding the event to the track
 		if err != nil || !ok {
 			return nextChunk, err
@@ -243,12 +243,11 @@ func (d *decoder) varLenTxt() error {
 		return err
 	}
 	offset += int64(l)
-	d.r.Seek(offset, io.SeekStart)
-
-	return nil
+	_, err = d.r.Seek(offset, io.SeekStart)
+	return err
 }
 
-func (p *decoder) parseMetaMsg(e *event) (nextChunkType, bool, error) {
+func (p *decoder) parseMetaMsg() (nextChunkType, bool, error) {
 	if _, err := p.readByte(); err != nil {
 		return eventChunk, false, err
 	}
@@ -267,8 +266,10 @@ func (d *decoder) IDnSize() ([4]byte, error) {
 	}
 	offset += 4 // [4]byte ID
 
-	d.r.Seek(4, io.SeekCurrent) // uint32 blockSize
-	offset += 4
+	if _, err := d.r.Seek(4, io.SeekCurrent); err != nil {
+		return ID, err
+	}
+	offset += 4 // uint32 blockSize
 
 	return ID, nil
 }
