@@ -8,7 +8,8 @@ import (
 	"github.com/Garik-/humanize/pkg/midi"
 	"log"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 )
 
 const (
@@ -29,27 +30,6 @@ type result struct {
 // note -> type -> velocity
 type velocityMap map[uint8]map[uint8]map[uint8]bool
 
-func decodeFile(name string) *result {
-	out := &result{name: name}
-	f, err := os.Open(name)
-	if err != nil {
-		out.err = err
-		return out
-	}
-
-	defer f.Close()
-
-	decoder := midi.NewDecoder(f)
-	err = decoder.Decode()
-	if err != nil {
-		out.err = err
-		return out
-	}
-
-	out.events = decoder.Events
-	return out
-}
-
 func readList(file *os.File) <-chan string {
 	out := make(chan string)
 
@@ -64,47 +44,6 @@ func readList(file *os.File) <-chan string {
 	}()
 
 	return out
-}
-
-func decodeWorker(ctx context.Context, paths <-chan string, cntRoutines int) (<-chan *result, <-chan struct{}) {
-	out := make(chan *result)
-	done := make(chan struct{}, 1)
-
-	go func() {
-		var wg sync.WaitGroup
-		goroutines := make(chan struct{}, cntRoutines)
-
-	loop:
-		for path := range paths {
-			select {
-			case goroutines <- struct{}{}:
-			case <-ctx.Done():
-				log.Println("decodeWorker context done")
-				break loop
-			}
-			wg.Add(1)
-			go func(ctx context.Context, path string, goroutines <-chan struct{}, out chan<- *result, wg *sync.WaitGroup) {
-				defer wg.Done()
-
-				select {
-				case out <- decodeFile(path):
-				case <-ctx.Done():
-					log.Printf("decodeFile %s context done\n", path)
-				}
-				<-goroutines
-
-			}(ctx, path, goroutines, out, &wg)
-		}
-
-		wg.Wait()
-		close(goroutines)
-		close(out)
-
-		done <- struct{}{}
-		close(done)
-	}()
-
-	return out, done
 }
 
 func newVelocityMap(parent context.Context, paths <-chan string, cntRoutines int) (velocityMap, error) {
@@ -157,14 +96,32 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer f.Close()
 
-	// done := make(chan os.Signal, 1)
-	// signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{}, 1)
+
+	defer func() {
+		f.Close()
+
+		done <- struct{}{}
+		close(done)
+	}()
+
+	go func() {
+		doneSignal := make(chan os.Signal, 1)
+		signal.Notify(doneSignal, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+		select {
+		case <-doneSignal:
+		case <-done:
+		}
+
+		cancel()
+	}()
 
 	paths := readList(f)
 	var m velocityMap
-	m, err = newVelocityMap(context.Background(), paths, *maxFlag)
+	m, err = newVelocityMap(ctx, paths, *maxFlag)
 
 	if err != nil {
 		log.Fatal(err)
