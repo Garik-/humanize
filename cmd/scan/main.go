@@ -51,12 +51,7 @@ func main() {
 	}
 	flag.Parse()
 
-	if *listFlag == "" {
-		flag.Usage()
-		return
-	}
-
-	if *maxFlag <= 0 {
+	if *listFlag == "" || *maxFlag <= 0 {
 		flag.Usage()
 		return
 	}
