@@ -3,10 +3,16 @@ package main
 import (
 	"context"
 	"github.com/Garik-/humanize/pkg/midi"
-	"log"
+	"go.uber.org/zap"
 	"os"
 	"sync"
 )
+
+type result struct {
+	name   string
+	events []*midi.Event
+	err    error
+}
 
 func decodeFile(name string) *result {
 	out := &result{name: name}
@@ -29,7 +35,20 @@ func decodeFile(name string) *result {
 	return out
 }
 
+func decodeRoutine(ctx context.Context, path string, goroutines <-chan struct{}, out chan<- *result, wg *sync.WaitGroup) {
+	log := decoderLog.Named("decodeRoutine")
+	defer wg.Done()
+
+	select {
+	case out <- decodeFile(path):
+	case <-ctx.Done():
+		log.Debug("context done", zap.String("path", path))
+	}
+	<-goroutines
+}
+
 func decodeWorker(ctx context.Context, paths <-chan string, cntRoutines int) (<-chan *result, <-chan struct{}) {
+	log := decoderLog.Named("decodeWorker")
 	out := make(chan *result)
 	done := make(chan struct{}, 1)
 
@@ -42,21 +61,11 @@ func decodeWorker(ctx context.Context, paths <-chan string, cntRoutines int) (<-
 			select {
 			case goroutines <- struct{}{}:
 			case <-ctx.Done():
-				log.Println("decodeWorker context done")
+				log.Debug("context done")
 				break loop
 			}
 			wg.Add(1)
-			go func(ctx context.Context, path string, goroutines <-chan struct{}, out chan<- *result, wg *sync.WaitGroup) {
-				defer wg.Done()
-
-				select {
-				case out <- decodeFile(path):
-				case <-ctx.Done():
-					log.Printf("decodeFile %s context done\n", path)
-				}
-				<-goroutines
-
-			}(ctx, path, goroutines, out, &wg)
+			go decodeRoutine(ctx, path, goroutines, out, &wg)
 		}
 
 		wg.Wait()
