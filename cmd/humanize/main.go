@@ -56,7 +56,6 @@ func writeRandVelocity(w io.WriteSeeker, decoder *midi.Decoder, data velocityMap
 	for _, event := range decoder.Events {
 		if msgType, ok := data[event.Note]; ok {
 			if velocities, ok := msgType[event.MsgType]; ok {
-				rand.Seed(time.Now().UTC().UnixNano())
 				velocity := randVelocity(velocities, *minFlag, *maxFlag)
 				_, err := w.Seek(event.VelocityByteOffset, io.SeekStart)
 				if err != nil {
