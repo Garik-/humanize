@@ -16,10 +16,10 @@ import (
 
 var (
 	databaseFlag = flag.String("d", "", "The path to the database json file")
-	inFlag = flag.String("i", "", "Input midi file")
-	outFlag = flag.String("o", "", "Output midi file")
-	minFlag = flag.Int("min", 0, "Min velocity")
-	maxFlag = flag.Int("max", 127, "Max velocity")
+	inFlag       = flag.String("i", "", "Input midi file")
+	outFlag      = flag.String("o", "", "Output midi file")
+	minFlag      = flag.Int("min", 0, "Min velocity")
+	maxFlag      = flag.Int("max", 127, "Max velocity")
 )
 
 type velocityMap map[uint8]map[uint8][]int
@@ -54,6 +54,9 @@ func randVelocity(velocities []int, min int, max int) uint8 {
 
 func writeRandVelocity(w io.WriteSeeker, decoder *midi.Decoder, data velocityMap) error {
 	for _, event := range decoder.Events {
+		if event.Velocity == 0 {
+			continue
+		}
 		if msgType, ok := data[event.Note]; ok {
 			if velocities, ok := msgType[event.MsgType]; ok {
 				velocity := randVelocity(velocities, *minFlag, *maxFlag)
