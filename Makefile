@@ -2,7 +2,7 @@ include includes.mk
 
 PHONY: help install build package publish test deploy clean promote lint bootstrap registry-login
 
-APPS ?= scan
+APPS ?= scan humanize
 
 .DEFAULT_GOAL := help
 
