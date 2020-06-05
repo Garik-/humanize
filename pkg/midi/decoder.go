@@ -14,6 +14,13 @@ const (
 	trackChunk
 )
 
+type timeFormat int
+
+const (
+	MetricalTF timeFormat = iota + 1
+	TimeCodeTF
+)
+
 var (
 	headerChunkID = [4]byte{0x4D, 0x54, 0x68, 0x64}
 	trackChunkID  = [4]byte{0x4D, 0x54, 0x72, 0x6B}
@@ -25,17 +32,28 @@ var (
 )
 
 type Event struct {
+	absTicks           int64
+	timeDelta          uint32
 	MsgType            uint8
 	Note               uint8
 	Velocity           uint8
 	VelocityByteOffset int64
 }
 
-type Decoder struct {
-	r         io.ReadSeeker
+type Track struct {
+	timeDelta int64
 	Events    []*Event
-	lastEvent *Event
-	offset    int64
+}
+
+type Decoder struct {
+	r            io.ReadSeeker
+	lastEvent    *Event
+	currentTrack *Track
+	offset       int64
+
+	TicksPerQuarterNote uint16
+	TimeFormat          timeFormat
+	Tracks              []*Track
 }
 
 func (d *Decoder) Decode() error {
@@ -65,10 +83,22 @@ func (d *Decoder) Decode() error {
 		return fmt.Errorf("%s - expected header size to be 6, was %d", ErrFmtNotSupported, headerSize)
 	}
 
-	d.offset += 4 + 2 + 2 + 2 // uint32 headerSize + uint16 Format + uint16 NumTracks + uint16 Division
+	d.offset += 4 + 2 + 2 // uint32 headerSize + uint16 Format + uint16 NumTracks
 
 	if _, err := d.r.Seek(d.offset, io.SeekStart); err != nil {
 		return err
+	}
+
+	var division uint16
+	if err := binary.Read(d.r, binary.BigEndian, &division); err != nil {
+		return err
+	}
+
+	if (division & 0x8000) == 0 {
+		d.TicksPerQuarterNote = division & 0x7FFF
+		d.TimeFormat = MetricalTF
+	} else {
+		d.TimeFormat = TimeCodeTF
 	}
 
 	nextChunk, err := d.parseTrack()
@@ -89,6 +119,10 @@ func (d *Decoder) Decode() error {
 		}
 	}
 
+	// TODO: надо подсчитать разбить все время на d.TicksPerQuarterNote * 4 - это такты
+	// такты поделить на 4 и каждой ноте присвоить в каком она была такте в 1 2 3 или 4
+	// После прохода в d.TimeDelta будет смещение общее
+
 	_, err = d.r.Seek(0, io.SeekStart)
 	return err
 }
@@ -102,16 +136,20 @@ func (d *Decoder) parseTrack() (nextChunkType, error) {
 		return trackChunk, fmt.Errorf("%s - expected track chunk ID %v, got %v", ErrUnexpectedData, trackChunkID, id)
 	}
 
+	d.currentTrack = new(Track)
+	d.Tracks = append(d.Tracks, d.currentTrack)
+
 	return eventChunk, nil
 }
 
 func (d *Decoder) parseEvent() (nextChunkType, error) {
-	var err error
 
-	_, err = d.varLen()
+	timeDelta, err := d.varLen()
 	if err != nil {
 		return eventChunk, err
 	}
+
+	d.currentTrack.timeDelta += int64(timeDelta) // position
 
 	// status byte give us the msg type and channel.
 	statusByte, err := d.readByte()
@@ -119,7 +157,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		return eventChunk, err
 	}
 
-	e := new(Event)
+	e := &Event{timeDelta: timeDelta, absTicks: d.currentTrack.timeDelta}
 	e.MsgType = (statusByte & 0xF0) >> 4
 
 	if statusByte&0x80 == 0 {
@@ -164,7 +202,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		d.Events = append(d.Events, e)
+		d.currentTrack.Events = append(d.currentTrack.Events, e)
 
 	case 0x9:
 		if e.Note, err = d.uint7(); err != nil {
@@ -174,7 +212,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		d.Events = append(d.Events, e)
+		d.currentTrack.Events = append(d.currentTrack.Events, e)
 
 	case 0xA:
 		if e.Note, err = d.uint7(); err != nil {
@@ -184,7 +222,8 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		d.Events = append(d.Events, e)
+		d.currentTrack.Events = append(d.currentTrack.Events, e)
+
 	case 0xF:
 		var ok bool
 		nextChunk, ok, err = d.parseMetaMsg()
