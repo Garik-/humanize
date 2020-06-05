@@ -113,8 +113,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	in.Seek(0, 0)
-	out.Seek(0, 0)
+	_, err = in.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = out.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	decoder := midi.NewDecoder(in)
 	err = decoder.Decode()
