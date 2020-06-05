@@ -20,7 +20,6 @@ func newVelocityMap(parent context.Context, paths <-chan string, cntRoutines int
 	}()
 
 	m := make(velocityMap)
-	i := 0
 
 	for result := range results {
 		if result.err != nil {
@@ -29,9 +28,22 @@ func newVelocityMap(parent context.Context, paths <-chan string, cntRoutines int
 
 		log.Debug("result", zap.String("name", result.name), zap.Int("events", len(result.events)))
 
-		i++
-		if i == 10 {
-			break
+		for _, event := range result.events {
+			if event.Velocity == 0 {
+				continue
+			}
+
+			if _, ok := m[event.Note]; ok {
+				m[event.Note][event.MsgType][event.Velocity] = true
+			} else {
+				velocity := make(map[uint8]bool)
+				velocity[event.Velocity] = true
+
+				msgType := make(map[uint8]map[uint8]bool)
+				msgType[event.MsgType] = velocity
+
+				m[event.Note] = msgType
+			}
 		}
 	}
 

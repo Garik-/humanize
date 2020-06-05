@@ -25,10 +25,10 @@ var (
 )
 
 type Event struct {
-	msgType            uint8
-	note               uint8
-	velocity           uint8
-	velocityByteOffset int64
+	MsgType            uint8
+	Note               uint8
+	Velocity           uint8
+	VelocityByteOffset int64
 }
 
 type Decoder struct {
@@ -120,11 +120,11 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 	}
 
 	e := new(Event)
-	e.msgType = (statusByte & 0xF0) >> 4
+	e.MsgType = (statusByte & 0xF0) >> 4
 
 	if statusByte&0x80 == 0 {
-		if d.lastEvent != nil && isVoiceMsgType(d.lastEvent.msgType) {
-			e.msgType = d.lastEvent.msgType
+		if d.lastEvent != nil && isVoiceMsgType(d.lastEvent.MsgType) {
+			e.MsgType = d.lastEvent.MsgType
 
 			d.offset -= 1
 			if _, err := d.r.Seek(-1, io.SeekCurrent); err != nil {
@@ -133,7 +133,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		}
 	}
 
-	if e.msgType == 0 {
+	if e.MsgType == 0 {
 		return eventChunk, nil
 	}
 
@@ -142,7 +142,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 	nextChunk := eventChunk
 
 	// Extract values based on message type
-	switch e.msgType {
+	switch e.MsgType {
 
 	case 0x2, 0x3, 0x4, 0x5, 0x6, 0xC, 0xD:
 		if _, err := d.r.Seek(1, io.SeekCurrent); err != nil {
@@ -157,31 +157,31 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		d.offset += 2
 
 	case 0x8:
-		if e.note, err = d.uint7(); err != nil {
+		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		e.velocityByteOffset = d.offset
-		if e.velocity, err = d.uint7(); err != nil {
+		e.VelocityByteOffset = d.offset
+		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
 		d.Events = append(d.Events, e)
 
 	case 0x9:
-		if e.note, err = d.uint7(); err != nil {
+		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		e.velocityByteOffset = d.offset
-		if e.velocity, err = d.uint7(); err != nil {
+		e.VelocityByteOffset = d.offset
+		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
 		d.Events = append(d.Events, e)
 
 	case 0xA:
-		if e.note, err = d.uint7(); err != nil {
+		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
-		e.velocityByteOffset = d.offset
-		if e.velocity, err = d.uint7(); err != nil {
+		e.VelocityByteOffset = d.offset
+		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
 		d.Events = append(d.Events, e)

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go.uber.org/zap"
@@ -13,15 +14,16 @@ import (
 )
 
 const (
-	maxGoroutines = 10
+	maxGoroutines = 2
 )
 
 var (
 	listFlag = flag.String("l", "", "The path to the list of midi files,\nfind . -type f -name \"*.mid\" > midi_list.txt")
+	outFlag  = flag.String("o", "", "The path to output json file")
 	maxFlag  = flag.Int("p", maxGoroutines, "Number of files processed in parallel, must be > 0")
 )
 
-func readList(file *os.File) <-chan string {
+func readList(file *os.File) (<-chan string, error) {
 	out := make(chan string)
 
 	scanner := bufio.NewScanner(file)
@@ -34,7 +36,7 @@ func readList(file *os.File) <-chan string {
 		close(out)
 	}()
 
-	return out
+	return out, nil
 }
 
 func init() {
@@ -51,13 +53,19 @@ func main() {
 	}
 	flag.Parse()
 
-	if *listFlag == "" || *maxFlag <= 0 {
+	if *listFlag == "" || *outFlag == "" || *maxFlag <= 0 {
 		flag.Usage()
 		return
 	}
 
-	f, err := os.Open(*listFlag)
+	in, err := os.Open(*listFlag)
 	if err != nil {
+		log.Fatal(err)
+	}
+
+	out, err := os.OpenFile(*outFlag, os.O_CREATE|os.O_WRONLY, os.ModePerm)
+	if err != nil {
+		in.Close()
 		log.Fatal(err)
 	}
 
@@ -65,7 +73,8 @@ func main() {
 	done := make(chan struct{}, 1)
 
 	defer func() {
-		f.Close()
+		out.Close()
+		in.Close()
 
 		done <- struct{}{}
 		close(done)
@@ -83,13 +92,43 @@ func main() {
 		cancel()
 	}()
 
-	paths := readList(f)
-	var m velocityMap
-	m, err = newVelocityMap(ctx, paths, *maxFlag)
-
+	paths, err := readList(in)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("%v", m)
+	var m velocityMap
+	m, err = newVelocityMap(ctx, paths, *maxFlag)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// note > type > []velocity
+	data := make(map[uint8]map[uint8][]int)
+	for note, types := range m {
+		for msgType, velocity := range types {
+			mainLog.Debug("map", zap.Uint8("note", note), zap.Uint8("msgType", msgType), zap.Int("velocity", len(velocity)))
+
+			i := 0
+			keys := make([]int, len(velocity))
+			for k := range velocity {
+				keys[i] = int(k)
+				i++
+			}
+
+			if _, ok := data[note]; ok {
+				data[note][msgType] = keys
+			} else {
+				msgTypes := make(map[uint8][]int)
+				msgTypes[msgType] = keys
+				data[note] = msgTypes
+			}
+		}
+	}
+
+	encoder := json.NewEncoder(out)
+	err = encoder.Encode(data)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
