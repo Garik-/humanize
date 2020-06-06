@@ -22,7 +22,8 @@ var (
 	maxFlag      = flag.Int("max", 127, "Max velocity")
 )
 
-type velocityMap map[uint8]map[uint8][]int
+// note -> type -> position -> velocity
+type velocityMap map[uint8]map[uint8]map[int][]int
 
 func importDatabase(name string) (velocityMap, error) {
 	jsonFile, err := os.Open(name)
@@ -42,32 +43,45 @@ func importDatabase(name string) (velocityMap, error) {
 	return data, err
 }
 
-func randVelocity(velocities []int, min int, max int) uint8 {
+func randVelocity(velocities []int, def uint8, min int, max int) uint8 {
+	attempts := len(velocities)
 	for {
+		if attempts == 0 {
+			return def
+		}
+
 		rand.Seed(time.Now().UTC().UnixNano())
 		velocity := velocities[rand.Intn(len(velocities))]
 		if velocity > min && velocity < max {
 			return uint8(velocity)
+		} else {
+			attempts--
 		}
 	}
 }
 
 func writeRandVelocity(w io.WriteSeeker, decoder *midi.Decoder, data velocityMap) error {
-	for _, event := range decoder.Events {
-		if event.Velocity == 0 {
-			continue
-		}
-		if msgType, ok := data[event.Note]; ok {
-			if velocities, ok := msgType[event.MsgType]; ok {
-				velocity := randVelocity(velocities, *minFlag, *maxFlag)
-				_, err := w.Seek(event.VelocityByteOffset, io.SeekStart)
-				if err != nil {
-					return err
-				}
+	for _, track := range decoder.Tracks {
+		for _, event := range track.Events {
+			if event.Velocity == 0 {
+				continue
+			}
+			if msgType, ok := data[event.Note]; ok {
+				if positions, ok := msgType[event.MsgType]; ok {
+					if velocities, ok := positions[event.QuarterPosition]; ok {
+						velocity := randVelocity(velocities, event.Velocity, *minFlag, *maxFlag)
+						if velocity != event.Velocity {
+							_, err := w.Seek(event.VelocityByteOffset, io.SeekStart)
+							if err != nil {
+								return err
+							}
 
-				err = binary.Write(w, binary.BigEndian, velocity)
-				if err != nil {
-					return err
+							err = binary.Write(w, binary.BigEndian, velocity)
+							if err != nil {
+								return err
+							}
+						}
+					}
 				}
 			}
 		}
