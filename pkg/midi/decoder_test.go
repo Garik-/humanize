@@ -3,6 +3,7 @@ package midi
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
@@ -67,36 +68,38 @@ func equalFiles(src *os.File, dst *os.File) (bool, error) {
 }
 
 func TestDecoder_Decode(t *testing.T) {
-	//f, err := os.Open("./test.mid")
-	//require.NoError(t, err)
-	//
-	//defer f.Close()
-	//
-	//decoder := NewDecoder(f)
-	//err = decoder.Decode()
-	//require.NoError(t, err)
-	//
-	//assert.Equal(t, 2, len(decoder.Events))
-	//
-	//assert.Equal(t, uint8(9), decoder.Events[0].MsgType)
-	//assert.Equal(t, uint8(72), decoder.Events[0].Velocity)
-	//
-	//assert.Equal(t, uint8(8), decoder.Events[1].MsgType)
-	//assert.Equal(t, uint8(64), decoder.Events[1].Velocity)
-	//
-	//var tmp *os.File
-	//tmp, err = createCopyTmpFile(f)
-	//require.NoError(t, err)
-	//
-	//defer os.Remove(tmp.Name())
-	//
-	//err = writeVelocity(tmp, decoder)
-	//require.NoError(t, err)
-	//
-	//var isEqual bool
-	//isEqual, err = equalFiles(f, tmp)
-	//require.NoError(t, err)
-	//assert.Equal(t, true, isEqual)
+	f, err := os.Open("./test.mid")
+	require.NoError(t, err)
+
+	defer f.Close()
+
+	decoder := NewDecoder(f)
+	err = decoder.Decode()
+	require.NoError(t, err)
+
+	events := decoder.Tracks[0].Events
+
+	assert.Equal(t, 2, len(events))
+
+	assert.Equal(t, uint8(9), events[0].MsgType)
+	assert.Equal(t, uint8(72), events[0].Velocity)
+
+	assert.Equal(t, uint8(8), events[1].MsgType)
+	assert.Equal(t, uint8(64), events[1].Velocity)
+
+	var tmp *os.File
+	tmp, err = createCopyTmpFile(f)
+	require.NoError(t, err)
+
+	defer os.Remove(tmp.Name())
+
+	err = writeVelocity(tmp, decoder)
+	require.NoError(t, err)
+
+	var isEqual bool
+	isEqual, err = equalFiles(f, tmp)
+	require.NoError(t, err)
+	assert.Equal(t, true, isEqual)
 }
 
 func TestDecodeQuarter(t *testing.T) {
@@ -118,46 +121,6 @@ func TestDecodeQuarter(t *testing.T) {
 	}
 }
 
-type MyRange struct {
-	cnt int
-
-	loverBound int64
-	upperBound int64
-}
-
-func newMyRange(loverBound int64, upperBound int64) *MyRange {
-	return &MyRange{
-		loverBound: loverBound,
-		upperBound: upperBound,
-	}
-}
-
-func (m *MyRange) stepBy(n int) {
-	m.cnt += n
-	step := m.upperBound - m.loverBound
-
-	m.upperBound += step * int64(n)
-	m.loverBound += step * int64(n)
-}
-
-func (m *MyRange) contains(item int64) bool {
-	return item >= m.loverBound && item < m.upperBound
-}
-
-func (m *MyRange) position() int {
-	return m.cnt % 4
-}
-
-/*
-   decoder_test.go:112: decoder ticks in 1/4: 480
-   decoder_test.go:116: note: 35, type: 0x9, delta: 960
-   decoder_test.go:116: note: 35, type: 0x8, delta: 480
-   decoder_test.go:116: note: 35, type: 0x9, delta: 960
-   decoder_test.go:116: note: 35, type: 0x8, delta: 480
-   decoder_test.go:116: note: 35, type: 0x9, delta: 2400
-   decoder_test.go:116: note: 35, type: 0x8, delta: 480
-*/
-
 func TestRange(t *testing.T) {
 	var n int64 = 480
 	r := newMyRange(0, n)
@@ -176,5 +139,5 @@ func TestRange(t *testing.T) {
 		}
 	}
 
-	t.Logf("cnt: %d, min - %d, max - %d, position: %d", r.cnt, r.loverBound, r.upperBound, r.position())
+	t.Logf("cnt: %d, min - %d, max - %d, position: %d", r.cnt, r.lowerBound, r.upperBound, r.position())
 }
