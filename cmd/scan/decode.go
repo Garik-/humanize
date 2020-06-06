@@ -10,7 +10,7 @@ import (
 
 type result struct {
 	name   string
-	events []*midi.Event
+	tracks []*midi.Track
 	err    error
 }
 
@@ -31,7 +31,7 @@ func decodeFile(name string) *result {
 		return out
 	}
 
-	out.events = decoder.Events
+	out.tracks = decoder.Tracks
 	return out
 }
 

@@ -97,31 +97,49 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var m velocityMap
+	var m noteMap
 	m, err = newVelocityMap(ctx, paths, *maxFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// note > type > []velocity
-	data := make(map[uint8]map[uint8][]int)
+	// note > type > position > []velocity
+	data := make(map[uint8]map[uint8]map[int][]int)
 	for note, types := range m {
-		for msgType, velocity := range types {
-			mainLog.Debug("map", zap.Uint8("note", note), zap.Uint8("msgType", msgType), zap.Int("velocity", len(velocity)))
+		for msgType, positions := range types {
+			for position, velocity := range positions {
+				mainLog.Debug("map",
+					zap.Uint8("note", note),
+					zap.Uint8("msgType", msgType),
+					zap.Int("position", position),
+					zap.Int("velocity", len(velocity)),
+				)
 
-			i := 0
-			keys := make([]int, len(velocity))
-			for k := range velocity {
-				keys[i] = int(k)
-				i++
-			}
+				i := 0
+				keys := make([]int, len(velocity))
+				for k := range velocity {
+					keys[i] = int(k)
+					i++
+				}
 
-			if _, ok := data[note]; ok {
-				data[note][msgType] = keys
-			} else {
-				msgTypes := make(map[uint8][]int)
-				msgTypes[msgType] = keys
-				data[note] = msgTypes
+				if _, ok := data[note]; ok { // check type
+					if _, ok := data[note][msgType]; ok { // check position
+						data[note][msgType][position] = keys
+					} else {
+						positionMap := make(map[int][]int)
+						positionMap[position] = keys
+
+						data[note][msgType] = positionMap
+					}
+				} else {
+					positionMap := make(map[int][]int)
+					positionMap[position] = keys
+
+					msgTypes := make(map[uint8]map[int][]int)
+					msgTypes[msgType] = positionMap
+
+					data[note] = msgTypes
+				}
 			}
 		}
 	}
