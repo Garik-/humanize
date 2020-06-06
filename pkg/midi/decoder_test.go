@@ -27,14 +27,16 @@ func createCopyTmpFile(src *os.File) (*os.File, error) {
 }
 
 func writeVelocity(w io.WriteSeeker, decoder *Decoder) error {
-	for _, event := range decoder.Events {
-		_, err := w.Seek(event.VelocityByteOffset, io.SeekStart)
-		if err != nil {
-			return err
-		}
-		err = binary.Write(w, binary.BigEndian, event.Velocity)
-		if err != nil {
-			return err
+	for _, track := range decoder.Tracks {
+		for _, event := range track.Events {
+			_, err := w.Seek(event.VelocityByteOffset, io.SeekStart)
+			if err != nil {
+				return err
+			}
+			err = binary.Write(w, binary.BigEndian, event.Velocity)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -75,13 +77,15 @@ func TestDecoder_Decode(t *testing.T) {
 	err = decoder.Decode()
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, len(decoder.Events))
+	events := decoder.Tracks[0].Events
 
-	assert.Equal(t, uint8(9), decoder.Events[0].MsgType)
-	assert.Equal(t, uint8(72), decoder.Events[0].Velocity)
+	assert.Equal(t, 2, len(events))
 
-	assert.Equal(t, uint8(8), decoder.Events[1].MsgType)
-	assert.Equal(t, uint8(64), decoder.Events[1].Velocity)
+	assert.Equal(t, uint8(9), events[0].MsgType)
+	assert.Equal(t, uint8(72), events[0].Velocity)
+
+	assert.Equal(t, uint8(8), events[1].MsgType)
+	assert.Equal(t, uint8(64), events[1].Velocity)
 
 	var tmp *os.File
 	tmp, err = createCopyTmpFile(f)
@@ -96,4 +100,27 @@ func TestDecoder_Decode(t *testing.T) {
 	isEqual, err = equalFiles(f, tmp)
 	require.NoError(t, err)
 	assert.Equal(t, true, isEqual)
+}
+
+func TestDecodeQuarter(t *testing.T) {
+	f, err := os.Open("./test2.mid")
+	require.NoError(t, err)
+
+	defer f.Close()
+
+	decoder := NewDecoder(f)
+	err = decoder.Decode()
+	require.NoError(t, err)
+
+	cases := []int{2, 1, 3}
+	i := 0
+
+	for _, track := range decoder.Tracks {
+		for _, event := range track.Events {
+			if event.MsgType == 0x09 {
+				assert.Equal(t, cases[i], event.QuarterPosition)
+				i++
+			}
+		}
+	}
 }

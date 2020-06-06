@@ -14,7 +14,8 @@ DOCKER_TAG_LATEST ?= false
 DOCKER_IMAGE ?= $(DOCKER_REPO)/$(APP):$(VERSION)
 
 GO = go
-GO_FLAGS ?= CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+GO_FLAGS ?= CGO_ENABLED=0
+# GO_FLAGS ?= CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 GO_LDFLAAGS ?= -ldflags="-X 'main.Version=$(VERSION)'"
 GO_HAS_LINT := $(shell command -v golangci-lint;)
 

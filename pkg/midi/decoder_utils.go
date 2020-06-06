@@ -65,3 +65,21 @@ func (d *Decoder) IDnSize() ([4]byte, error) {
 
 	return ID, nil
 }
+
+func quarterPosition(absTicks int64, ticksPerQuarterNote int64) int {
+	r := newMyRange(0, ticksPerQuarterNote)
+
+	for {
+		if r.contains(absTicks) == true {
+			break
+		}
+
+		if absTicks > ticksPerQuarterNote {
+			r.stepBy(int(absTicks / ticksPerQuarterNote))
+		} else {
+			r.stepBy(1)
+		}
+	}
+
+	return r.position()
+}
