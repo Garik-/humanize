@@ -32,8 +32,7 @@ var (
 )
 
 type Event struct {
-	absTicks           int64
-	timeDelta          uint32
+	TimeDelta          uint32
 	MsgType            uint8
 	Note               uint8
 	Velocity           uint8
@@ -41,8 +40,7 @@ type Event struct {
 }
 
 type Track struct {
-	timeDelta int64
-	Events    []*Event
+	Events []*Event
 }
 
 type Decoder struct {
@@ -149,15 +147,13 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		return eventChunk, err
 	}
 
-	d.currentTrack.timeDelta += int64(timeDelta) // position
-
 	// status byte give us the msg type and channel.
 	statusByte, err := d.readByte()
 	if err != nil {
 		return eventChunk, err
 	}
 
-	e := &Event{timeDelta: timeDelta, absTicks: d.currentTrack.timeDelta}
+	e := &Event{TimeDelta: timeDelta}
 	e.MsgType = (statusByte & 0xF0) >> 4
 
 	if statusByte&0x80 == 0 {
