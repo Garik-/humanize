@@ -32,7 +32,10 @@ var (
 )
 
 type Event struct {
-	TimeDelta          uint32
+	absTicks  int64
+	timeDelta uint32
+
+	QuarterPosition    int
 	MsgType            uint8
 	Note               uint8
 	Velocity           uint8
@@ -40,7 +43,8 @@ type Event struct {
 }
 
 type Track struct {
-	Events []*Event
+	Events    []*Event
+	timeDelta int64
 }
 
 type Decoder struct {
@@ -117,10 +121,6 @@ func (d *Decoder) Decode() error {
 		}
 	}
 
-	// TODO: надо подсчитать разбить все время на d.TicksPerQuarterNote * 4 - это такты
-	// такты поделить на 4 и каждой ноте присвоить в каком она была такте в 1 2 3 или 4
-	// После прохода в d.TimeDelta будет смещение общее
-
 	_, err = d.r.Seek(0, io.SeekStart)
 	return err
 }
@@ -153,7 +153,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		return eventChunk, err
 	}
 
-	e := &Event{TimeDelta: timeDelta}
+	e := &Event{timeDelta: timeDelta}
 	e.MsgType = (statusByte & 0xF0) >> 4
 
 	if statusByte&0x80 == 0 {
@@ -190,6 +190,7 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		}
 		d.offset += 2
 
+	// Note Off
 	case 0x8:
 		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
@@ -198,8 +199,14 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
+
+		d.currentTrack.timeDelta += int64(timeDelta)
+		e.absTicks = d.currentTrack.timeDelta
+		e.QuarterPosition = quarterPosition(e.absTicks, int64(d.TicksPerQuarterNote))
+
 		d.currentTrack.Events = append(d.currentTrack.Events, e)
 
+	// Note On
 	case 0x9:
 		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
@@ -208,8 +215,14 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
+
+		d.currentTrack.timeDelta += int64(timeDelta)
+		e.absTicks = d.currentTrack.timeDelta
+		e.QuarterPosition = quarterPosition(e.absTicks, int64(d.TicksPerQuarterNote))
+
 		d.currentTrack.Events = append(d.currentTrack.Events, e)
 
+	// Polyphonic Key Pressure (aftertouch)
 	case 0xA:
 		if e.Note, err = d.uint7(); err != nil {
 			return eventChunk, err
@@ -218,6 +231,11 @@ func (d *Decoder) parseEvent() (nextChunkType, error) {
 		if e.Velocity, err = d.uint7(); err != nil {
 			return eventChunk, err
 		}
+
+		d.currentTrack.timeDelta += int64(timeDelta)
+		e.absTicks = d.currentTrack.timeDelta
+		e.QuarterPosition = quarterPosition(e.absTicks, int64(d.TicksPerQuarterNote))
+
 		d.currentTrack.Events = append(d.currentTrack.Events, e)
 
 	case 0xF:

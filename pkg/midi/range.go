@@ -7,9 +7,9 @@ type MyRange struct {
 	upperBound int64
 }
 
-func newMyRange(loverBound int64, upperBound int64) *MyRange {
+func newMyRange(lowerBound int64, upperBound int64) *MyRange {
 	return &MyRange{
-		lowerBound: loverBound,
+		lowerBound: lowerBound,
 		upperBound: upperBound,
 	}
 }

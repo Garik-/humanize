@@ -112,32 +112,15 @@ func TestDecodeQuarter(t *testing.T) {
 	err = decoder.Decode()
 	require.NoError(t, err)
 
-	t.Logf("decoder ticks in 1/4: %d", decoder.TicksPerQuarterNote)
+	cases := []int{2, 1, 3}
+	i := 0
 
 	for _, track := range decoder.Tracks {
 		for _, event := range track.Events {
-			t.Logf("note: %d, type: %#x, delta: %d", event.Note, event.MsgType, event.TimeDelta)
+			if event.MsgType == 0x09 {
+				assert.Equal(t, cases[i], event.QuarterPosition)
+				i++
+			}
 		}
 	}
-}
-
-func TestRange(t *testing.T) {
-	var n int64 = 480
-	r := newMyRange(0, n)
-
-	var x int64 = 90
-	for {
-		if r.contains(x) == true {
-			break
-		}
-		t.Log("step")
-
-		if x > n {
-			r.stepBy(int(x / n))
-		} else {
-			r.stepBy(1)
-		}
-	}
-
-	t.Logf("cnt: %d, min - %d, max - %d, position: %d", r.cnt, r.lowerBound, r.upperBound, r.position())
 }
